@@ -1,11 +1,13 @@
 #[macro_use] extern crate rocket;
+use std::path::PathBuf;
+
 use rocket::fs::TempFile;
 use rocket::form::Form;
 use rocket::response::content::RawHtml;
 use serde::{Serialize, Deserialize};
 use tera::{Context, Tera};
 
-#[derive(FromForm)]
+#[derive(FromForm, Debug)]
 struct Upload<'f> {
     myfile: TempFile<'f>,
     //filename: String,
@@ -25,16 +27,18 @@ struct Breadcrumb {
 }
 
 
-#[post("/upload", data = "<form>")]
-async fn upload(mut form: Form<Upload<'_>>) -> std::io::Result<()> {
+#[post("/<path..>", data = "<form>")]
+async fn upload(path: PathBuf, mut form: Form<Upload<'_>>) -> std::io::Result<()> {
     //let filename: String = form.filename.clone();
-    let filename = "foo.txt";
+    println!("Got form data: {:?}", &form);
+    println!("Want to write to file {}", form.myfile.name().unwrap());
+    let filename = path.join("foo.txt");
     form.myfile.persist_to(filename).await?;
     Ok(())
 }
 
-#[get("/")]
-fn root() -> RawHtml<String> {
+#[get("/<path..>")]
+fn root(path: PathBuf) -> RawHtml<String> {
     let mut tera = Tera::default();
     tera.add_template_file("./index.html", Some("index.html")).unwrap();
     let mut context = Context::new();
