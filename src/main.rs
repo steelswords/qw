@@ -1,7 +1,7 @@
 #[macro_use] extern crate rocket;
 use std::path::PathBuf;
 
-use rocket::fs::TempFile;
+use rocket::{fs::TempFile, figment::providers::Format};
 use rocket::form::Form;
 use rocket::response::content::RawHtml;
 use serde::{Serialize, Deserialize};
@@ -31,9 +31,14 @@ struct Breadcrumb {
 async fn upload(path: PathBuf, mut form: Form<Upload<'_>>) -> std::io::Result<()> {
     //let filename: String = form.filename.clone();
     println!("Got form data: {:?}", &form);
-    println!("Want to write to file {}", form.myfile.name().unwrap());
-    let filename = path.join("foo.txt");
-    form.myfile.persist_to(filename).await?;
+    println!("Want to write to file {:?}", form.myfile.raw_name());
+    if let Some(filename) = form.myfile.raw_name() {
+        // TODO: Sanitize this input
+        let filename = filename.dangerous_unsafe_unsanitized_raw().as_str();
+        let file = path.join(filename);
+        println!("Saving file to {:?}", file);
+        form.myfile.persist_to(file).await?;
+    }
     Ok(())
 }
 
