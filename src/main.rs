@@ -42,6 +42,8 @@ async fn upload(path: PathBuf, mut form: Form<Upload<'_>>) -> std::io::Result<()
     Ok(())
 }
 
+
+
 #[get("/<path..>")]
 fn root(path: PathBuf) -> RawHtml<String> {
     let mut tera = Tera::default();
