@@ -1,13 +1,16 @@
 #[macro_use] extern crate rocket;
+use std::net::{Ipv4Addr, IpAddr};
 use std::path::PathBuf;
 use std::fs;
 
-use rocket::fs::NamedFile;
-use rocket::http::uri::Path;
-use rocket::{fs::TempFile, figment::providers::Format};
+use rocket::data::Limits;
+use rocket::data::ToByteUnit;
+use rocket::Config;
+use rocket::fs::TempFile;
 use rocket::form::Form;
 use rocket::response::Responder;
 use rocket::response::content::RawHtml;
+use rocket_download_response::DownloadResponse;
 use serde::{Serialize, Deserialize};
 use tera::{Context, Tera};
 
@@ -33,15 +36,15 @@ struct Breadcrumb {
 #[derive(Debug, Responder)]
 pub enum FileOrIndexResponse {
     Html(RawHtml<String>),
-    NamedFile(NamedFile),
+    DownloadResponse(DownloadResponse),
 }
 
 fn get_all_files_in_directory(parent_path: &PathBuf) -> Vec<LocalFile> {
     println!("parent_path = {:?}", parent_path);
-    let paths = fs::read_dir(parent_path).unwrap_or(fs::read_dir(PathBuf::from(".")).unwrap());
+    let local_files = fs::read_dir(parent_path).unwrap_or(fs::read_dir(PathBuf::from(".")).unwrap());
     let mut return_vec = vec![];
 
-    for path in paths {
+    for path in local_files {
         if let Ok(path) = path {
             println!("Name: {}", path.path().display());
             // Get the right path type
@@ -58,7 +61,7 @@ fn get_all_files_in_directory(parent_path: &PathBuf) -> Vec<LocalFile> {
             };
 
             //Construct the right relative path
-            let download_path = path.path();
+            let download_path = parent_path.join(path.file_name());
 
             return_vec.push(
                 LocalFile {
@@ -90,8 +93,13 @@ async fn upload(path: PathBuf, mut form: Form<Upload<'_>>) -> std::io::Result<()
 }
 
 #[get("/<path..>")]
-async fn root(path: PathBuf) -> FileOrIndexResponse {
-    if path.is_dir() {
+async fn root(path: PathBuf) -> Option<FileOrIndexResponse> {
+    let current_working_directory = std::env::current_dir()
+        .expect("Invalid current working directory. Do you have permissions to access it? Does it still exist?");
+    let absolute_path = current_working_directory.join(&path);
+    println!("Serving relative path {:?}, Absolute path: {:?}", &path, &absolute_path);
+
+    if absolute_path.is_dir() {
         let mut tera = Tera::default();
         // TODO: Make this all internal
         tera.add_template_file("./index.html", Some("index.html")).unwrap();
@@ -99,25 +107,44 @@ async fn root(path: PathBuf) -> FileOrIndexResponse {
         let mut context = Context::new();
         // TODO
         context.insert("breadcrumbs", &vec![
-                       Breadcrumb { name: "foo".to_string(), path: "/no/where/".to_string() }
+                       Breadcrumb {
+                           name: String::from(path.to_str().expect("Could not stringify path")), path: "/no/where/".to_string() }
 
         ]);
-        // TODO
-        //context.insert("files", &vec![LocalFile{ name: "foo".to_string(), path: "/home/tristan".to_string(), path_type: "File".to_string()}]);
         context.insert("files", &get_all_files_in_directory(&path));
         context.insert("dir_name", path.as_os_str());
 
-        FileOrIndexResponse::Html(RawHtml(tera.render("index.html", &context).unwrap()))
+        Some(FileOrIndexResponse::Html(RawHtml(tera.render("index.html", &context).unwrap())))
     }
     else {
-        FileOrIndexResponse::NamedFile(NamedFile::open(PathBuf::from(&path)).await.expect(format!("Could not serve file {:?}", path.into_os_string()).as_str()))
+        if path.as_os_str() == "favicon.ico" {
+            return None;
+        }
+        println!("Sending file {:?}", &path);
+        Some(FileOrIndexResponse::DownloadResponse(
+            DownloadResponse::from_file(
+                PathBuf::from(&path),
+                Some(path.file_name().unwrap().to_str().unwrap()
+                     ),
+                None
+            ).await
+             .expect(format!("Could not serve file {:?}", path.into_os_string()).as_str())
+        ))
     }
 }
 
 #[launch]
 fn rocket() -> _ {
 
-    rocket::build()
+    let config = Config {
+        limits: Limits::default()
+            .limit("data-form", 100.gibibytes())
+            .limit("file", 100.gibibytes()),
+        address: IpAddr::V4(Ipv4Addr::new(0,0,0,0)),
+        ..Config::default()
+    };
+
+    rocket::custom(&config)
         .mount("/", routes![root])
         .mount("/", routes![upload])
 }
