@@ -1,6 +1,6 @@
 #[macro_use] extern crate rocket;
 use std::net::{Ipv4Addr, IpAddr};
-use std::path::{PathBuf, Ancestors};
+use std::path::PathBuf;
 use std::fs;
 
 use rocket::data::Limits;
@@ -13,6 +13,9 @@ use rocket::response::content::RawHtml;
 use rocket_download_response::DownloadResponse;
 use serde::{Serialize, Deserialize};
 use tera::{Context, Tera};
+
+mod index;
+use crate::index::FILE_SERVER_INDEX_TEMPLATE;
 
 #[derive(FromForm, Debug)]
 struct Upload<'f> {
@@ -113,7 +116,7 @@ async fn root(path: PathBuf) -> Option<FileOrIndexResponse> {
     if absolute_path.is_dir() {
         let mut tera = Tera::default();
         // TODO: Make this all internal
-        tera.add_template_file("./index.html", Some("index.html")).unwrap();
+        tera.add_raw_template("index.html", FILE_SERVER_INDEX_TEMPLATE).unwrap();
 
         let mut context = Context::new();
         // TODO

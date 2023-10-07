@@ -1,3 +1,4 @@
+pub const FILE_SERVER_INDEX_TEMPLATE: &str = r#"
 <!DOCTYPE html>
 <!-- LICENSE
 MIT License applies to index.html
@@ -146,4 +147,4 @@ SOFTWARE.
       {% endfor %}
     </ul>
   </body>
-</html>
+</html>"#;
