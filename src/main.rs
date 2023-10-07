@@ -1,6 +1,6 @@
 #[macro_use] extern crate rocket;
 use std::net::{Ipv4Addr, IpAddr};
-use std::path::PathBuf;
+use std::path::{PathBuf, Ancestors};
 use std::fs;
 
 use rocket::data::Limits;
@@ -117,11 +117,19 @@ async fn root(path: PathBuf) -> Option<FileOrIndexResponse> {
 
         let mut context = Context::new();
         // TODO
-        context.insert("breadcrumbs", &vec![
-                       Breadcrumb {
-                           name: String::from(path.to_str().expect("Could not stringify path")), path: "/no/where/".to_string() }
-
-        ]);
+        let mut breadcrumb_vec: Vec<Breadcrumb> = vec![];
+        for ancestor in absolute_path.ancestors() {
+            if let Some(ancestor_without_his_ancestors) = ancestor.file_name() {
+                breadcrumb_vec.push(
+                    Breadcrumb {
+                        name: String::from(ancestor_without_his_ancestors.to_str().unwrap()),
+                        path: String::from(ancestor_without_his_ancestors.to_str().unwrap()),
+                    }
+                );
+            }
+        }
+        let breadcrumb_vec = breadcrumb_vec.iter().rev().collect::<Vec<&Breadcrumb>>();
+        context.insert("breadcrumbs", &breadcrumb_vec);
         context.insert("files", &get_all_files_in_directory(&path));
         context.insert("dir_name", path.as_os_str());
 
@@ -135,8 +143,7 @@ async fn root(path: PathBuf) -> Option<FileOrIndexResponse> {
         Some(FileOrIndexResponse::DownloadResponse(
             DownloadResponse::from_file(
                 PathBuf::from(&path),
-                Some(path.file_name().unwrap().to_str().unwrap()
-                     ),
+                Some(path.file_name().unwrap().to_str().unwrap()),
                 None
             ).await
              .expect(format!("Could not serve file {:?}", path.into_os_string()).as_str())
