@@ -87,7 +87,18 @@ async fn upload(path: PathBuf, mut form: Form<Upload<'_>>) -> std::io::Result<()
         let filename = filename.dangerous_unsafe_unsanitized_raw().as_str();
         let file = path.join(filename);
         println!("Saving file to {:?}", file);
-        form.myfile.persist_to(file).await?;
+        // `persist_to` actually fails when the temp directory and the current directory are
+        // on different logical devices (i.e. different filesystems). We match and do a less-
+        // performant move_copy_to instead when there's a failure.
+        match form.myfile.persist_to(&file).await {
+            Ok(_) => {},
+            Err(_) => {
+                form.myfile
+                    .move_copy_to(&file)
+                    .await
+                    .expect("Could not persist file.");
+            }
+        };
     }
     Ok(())
 }
